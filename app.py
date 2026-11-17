@@ -18,6 +18,125 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MAX_BODY_SIZE = 16384  # 16 KB payload ceiling
 
 
+DEMO_HTML = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mycrobo Arena · AI Triage Microservice</title>
+  <style>
+    :root {
+      --bg: #090d16; --card: #121826; --border: #232d42;
+      --text: #f0f4f8; --sub: #8b9bb4; --accent: #00d26a;
+      --billing: #38bdf8; --technical: #f43f5e; --account: #a855f7;
+      --general: #94a3b8; --high: #ef4444; --low: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 2rem 1rem; display: flex; justify-content: center; }
+    .container { max-width: 720px; width: 100%; }
+    header { margin-bottom: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; }
+    .badge-bar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; }
+    .tag { font-size: 0.75rem; text-transform: uppercase; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 999px; }
+    .tag-live { background: #064e3b; color: #34d399; }
+    .tag-track { background: #1e293b; color: #94a3b8; }
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; }
+    p.sub { color: var(--sub); font-size: 0.95rem; line-height: 1.5; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+    label { display: block; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--sub); margin-bottom: 0.5rem; }
+    textarea { width: 100%; min-height: 110px; background: #0c121e; border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 0.75rem; font-size: 1rem; resize: vertical; margin-bottom: 1rem; }
+    textarea:focus { outline: none; border-color: var(--accent); }
+    .presets { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .preset-btn { background: #1e293b; border: 1px solid #334155; color: #cbd5e1; font-size: 0.8rem; padding: 0.35rem 0.75rem; border-radius: 6px; cursor: pointer; transition: 0.15s; }
+    .preset-btn:hover { background: #334155; color: white; }
+    button.submit-btn { width: 100%; background: var(--accent); color: #042f1d; border: none; font-weight: 700; padding: 0.85rem; border-radius: 8px; font-size: 1rem; cursor: pointer; transition: 0.15s; }
+    button.submit-btn:hover { opacity: 0.9; }
+    .result-box { display: none; margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1.25rem; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+    .metric { background: #0c121e; padding: 1rem; border-radius: 8px; border: 1px solid var(--border); }
+    .metric-label { font-size: 0.75rem; text-transform: uppercase; color: var(--sub); margin-bottom: 0.35rem; }
+    .metric-value { font-size: 1.25rem; font-weight: 700; }
+    pre { background: #05080f; border: 1px solid #1e2638; border-radius: 8px; padding: 0.75rem; font-size: 0.85rem; color: #7dd3fc; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge-bar">
+        <span class="tag tag-live">● System Live</span>
+        <span class="tag tag-track">Track: ai-triage</span>
+      </div>
+      <h1>AI Triage Microservice</h1>
+      <p class="sub">Production-grade classification and urgency triage engine. Live demonstration for Mycrobo Arena judges.</p>
+    </header>
+
+    <div class="card">
+      <label for="input-text">Test Customer Support Message / Ticket</label>
+      <div class="presets">
+        <button class="preset-btn" onclick="setQuery('Please refund my money for invoice #4812 immediately')">Refund Invoice</button>
+        <button class="preset-btn" onclick="setQuery('Critical internal server error 500: backend cluster crashed!')">Server Outage 500</button>
+        <button class="preset-btn" onclick="setQuery('I forgot my password and cannot sign in to my account')">Password Reset</button>
+        <button class="preset-btn" onclick="setQuery('Hello! Just wanted to know what your office hours are.')">General Inquiry</button>
+      </div>
+      <textarea id="input-text" placeholder="Type or paste any support message..."></textarea>
+      <button class="submit-btn" id="btn-submit" onclick="runTriage()">Classify Message</button>
+
+      <div class="result-box" id="result-box">
+        <label>Triage Decision</label>
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">Category</div>
+            <div class="metric-value" id="res-cat">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Urgency</div>
+            <div class="metric-value" id="res-urg">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Confidence</div>
+            <div class="metric-value" id="res-conf">—</div>
+          </div>
+        </div>
+        <label>Raw API Response (POST /classify)</label>
+        <pre id="res-json">{}</pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function setQuery(q) {
+      document.getElementById('input-text').value = q;
+      runTriage();
+    }
+    async function runTriage() {
+      const text = document.getElementById('input-text').value.trim();
+      if (!text) return;
+      const btn = document.getElementById('btn-submit');
+      btn.textContent = 'Classifying...';
+      btn.disabled = true;
+      try {
+        const res = await fetch('/classify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        const data = await res.json();
+        document.getElementById('result-box').style.display = 'block';
+        document.getElementById('res-cat').textContent = data.category ? data.category.toUpperCase() : 'UNKNOWN';
+        document.getElementById('res-urg').textContent = data.urgency ? data.urgency.toUpperCase() : 'UNKNOWN';
+        document.getElementById('res-conf').textContent = (data.confidence ? (data.confidence * 100).toFixed(0) : '0') + '%';
+        document.getElementById('res-json').textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        alert('Request failed: ' + e);
+      } finally {
+        btn.textContent = 'Classify Message';
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>"""
+
+
 # ==============================================================================
 # Rate Limiting (Production-Readiness Check #1)
 # ==============================================================================
@@ -268,6 +387,18 @@ class TriageHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def send_html(self, status: int, html_str: str):
+        """Sends an HTML response with security headers."""
+        payload = html_str.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_OPTIONS(self):
         """Handles preflight CORS requests cleanly."""
         self.send_response(204)
@@ -278,9 +409,11 @@ class TriageHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        """Handles GET requests (Health check endpoint)."""
+        """Handles GET requests (Health check endpoint & interactive live console)."""
         if self.path in ("/health", "/health/"):
             return self.send_json(200, {"ok": True})
+        if self.path in ("/", ""):
+            return self.send_html(200, DEMO_HTML)
         return self.send_json(404, {"error": "not_found"})
 
     def do_POST(self):
