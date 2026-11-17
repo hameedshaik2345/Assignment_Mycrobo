@@ -37,6 +37,10 @@ class handler(TriageHandler):
         self._normalize_path()
         return super().do_POST()
 
+    def do_HEAD(self):
+        self._normalize_path()
+        return super().do_HEAD()
+
     def do_OPTIONS(self):
         self._normalize_path()
         return super().do_OPTIONS()

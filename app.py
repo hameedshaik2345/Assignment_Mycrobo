@@ -399,6 +399,10 @@ class TriageHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def do_HEAD(self):
+        """Handles HEAD requests cleanly."""
+        return self.do_GET()
+
     def do_OPTIONS(self):
         """Handles preflight CORS requests cleanly."""
         self.send_response(204)
