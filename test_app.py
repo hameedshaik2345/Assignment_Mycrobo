@@ -259,4 +259,6 @@ class TestHttpServerIntegration(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    import sys
+    runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=2)
+    unittest.main(testRunner=runner)

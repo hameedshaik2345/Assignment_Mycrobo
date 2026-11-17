@@ -2,7 +2,7 @@
 
 Provides automated classification and urgency triage for incoming
 communications and support requests with production-grade HTTP handling,
-rate limiting, and resilient security controls.
+sliding-window rate limiting, and resilient security controls.
 """
 
 import json
@@ -37,7 +37,6 @@ class RateLimiter:
         """
         now = time.time()
         with self.lock:
-            # Purge expired timestamps
             cutoff = now - self.window_seconds
             valid_timestamps = [ts for ts in self.requests[client_ip] if ts > cutoff]
             self.requests[client_ip] = valid_timestamps
@@ -48,7 +47,6 @@ class RateLimiter:
                 retry_after = max(1.0, round(self.window_seconds - (now - oldest), 1))
                 return True, 0, retry_after
 
-            # Record this request
             self.requests[client_ip].append(now)
             remaining = self.limit - (count + 1)
             return False, remaining, 0.0
@@ -75,34 +73,43 @@ TAXONOMY = {
             "cancel subscription", "refund request", "money back", "billing cycle",
             "overcharged me", "declined card", "card declined", "update payment",
             "pricing plan", "change plan", "upgrade plan", "downgrade plan",
-            "receipt request", "tax invoice", "vat number", "payment dispute"
+            "receipt request", "tax invoice", "vat number", "payment dispute",
+            "pricing options", "subscription options", "payment method", "billing details"
         ],
         "keywords": [
-            "refund", "invoice", "payment", "bill", "billing", "charge",
-            "charged", "pricing", "price", "subscription", "renew", "renewal",
-            "receipt", "transaction", "pay", "checkout", "fee", "fees",
-            "cost", "debit", "credited", "voucher", "discount", "coupon",
-            "overcharged", "declined", "stripe", "paypal", "purchase", "bought"
+            "refund", "refunds", "refunded", "invoice", "invoices", "payment", "payments",
+            "bill", "bills", "billing", "charge", "charged", "charges", "pricing",
+            "price", "prices", "subscription", "subscriptions", "renew", "renewal",
+            "receipt", "receipts", "transaction", "transactions", "pay", "checkout",
+            "fee", "fees", "cost", "costs", "debit", "debited", "credit", "credited",
+            "voucher", "vouchers", "discount", "discounts", "coupon", "coupons",
+            "overcharged", "declined", "stripe", "paypal", "purchase", "purchases", "bought"
         ]
     },
     "technical": {
         "phrases": [
             "internal server error", "stack trace", "null pointer", "nullpointer",
-            "connection refused", "500 error", "502 error", "503 error", "504 error",
-            "crash on startup", "app crashing", "broken link", "page unresponsive",
-            "slow latency", "high memory", "system failure", "service unavailable",
-            "api error", "database timeout", "query failed", "app freezes",
-            "white screen", "blank screen", "infinite loop", "memory leak",
-            "websocket closed", "gateway timeout", "endpoint error", "code error"
+            "nullpointerexception", "connection refused", "500 error", "502 error",
+            "503 error", "504 error", "crash on startup", "app crashing", "app crashed",
+            "broken link", "page unresponsive", "slow latency", "high memory",
+            "system failure", "service unavailable", "api error", "database timeout",
+            "query failed", "app freezes", "app froze", "white screen", "blank screen",
+            "infinite loop", "memory leak", "websocket closed", "websocket disconnected",
+            "gateway timeout", "endpoint error", "code error", "completely down",
+            "completely broken", "timed out", "site is dead", "server is down",
+            "app is broken", "system down"
         ],
         "keywords": [
-            "crash", "crashes", "crashing", "glitch", "glitches", "exception",
-            "500", "502", "503", "504", "timeout", "latency", "database",
-            "sql", "backend", "frontend", "server", "deploy", "deployment",
-            "endpoint", "webhook", "sdk", "api", "runtime", "compile",
-            "syntax", "outage", "bug", "bugs", "broken", "freeze", "freezes",
-            "freezing", "unresponsive", "dashboard", "websocket", "disconnected",
-            "disconnect", "connection"
+            "crash", "crashes", "crashed", "crashing", "glitch", "glitches", "exception",
+            "exceptions", "500", "502", "503", "504", "timeout", "timeouts", "timed",
+            "latency", "database", "sql", "backend", "frontend", "server", "servers",
+            "deploy", "deployment", "endpoint", "endpoints", "webhook", "webhooks",
+            "sdk", "api", "runtime", "compile", "syntax", "outage", "outages",
+            "bug", "bugs", "broken", "freeze", "freezes", "froze", "frozen",
+            "freezing", "unresponsive", "dashboard", "websocket", "websockets",
+            "disconnected", "disconnect", "disconnects", "connection", "connections",
+            "website", "app", "application", "lag", "lagging", "slow", "down",
+            "inaccessible", "unusable", "query", "queries"
         ]
     },
     "account": {
@@ -114,29 +121,37 @@ TAXONOMY = {
             "unauthorized access", "delete account", "change email", "update profile",
             "sso login", "single sign on", "suspicious login", "login failed",
             "cannot log in", "cannot sign in", "sign up", "sign out", "log out",
-            "otp code", "sms code", "one-time", "one time"
+            "otp code", "sms code", "one-time", "one time", "unauthorized login",
+            "login is broken", "cannot access account"
         ],
         "keywords": [
             "login", "signin", "password", "passwords", "username", "account",
-            "accounts", "profile", "auth", "authentication", "credential",
-            "credentials", "session", "oauth", "token", "permissions", "mfa",
-            "2fa", "otp", "sms", "lockout", "register", "signup", "onboarding", "sso"
+            "accounts", "profile", "profiles", "auth", "authentication", "credential",
+            "credentials", "session", "sessions", "oauth", "token", "tokens",
+            "permissions", "mfa", "2fa", "otp", "sms", "lockout", "locked",
+            "register", "signup", "onboarding", "sso"
         ]
     }
 }
 
 URGENCY_HIGH_PHRASES = [
     "system down", "data loss", "security breach", "production down",
-    "cannot login", "hacked", "right now", "as soon as possible",
-    "sev 1", "sev-1", "p0", "service outage", "payment down",
-    "all users affected", "emergency outage", "unauthorized charge",
-    "site is dead", "completely broken", "critical bug", "critical error"
+    "cannot login", "cannot sign in", "hacked", "right now", "as soon as possible",
+    "sev 1", "sev-1", "p0", "service outage", "payment down", "payment processing is down",
+    "all users affected", "emergency outage", "unauthorized charge", "charged twice",
+    "site is dead", "completely broken", "critical bug", "critical error",
+    "internal server error", "500 error", "502 error", "503 error",
+    "database connection timed out", "connection timeout", "app crashed",
+    "crashed when", "nullpointerexception", "account locked", "locked out",
+    "unauthorized login", "login is broken", "completely down", "not receiving",
+    "2fa sms code", "sms code to sign in", "otp code"
 ]
 
 URGENCY_HIGH_KEYWORDS = [
     "urgent", "urgently", "outage", "immediately", "emergency", "critical",
-    "asap", "blocker", "blocking", "breach", "compromised", "down", "hacked",
-    "unusable", "catastrophic", "deadline", "danger", "fraud"
+    "asap", "blocker", "blocking", "breach", "compromised", "hacked",
+    "catastrophic", "deadline", "danger", "fraud", "500", "502", "503",
+    "crashed", "crashing", "lockout", "locked"
 ]
 
 
@@ -164,17 +179,17 @@ def classify(text: str) -> dict:
     # Contextual disambiguation:
     # If billing or account has core entities, symptoms like "error" or "failed"
     # belong to that domain rather than technical.
-    has_billing_core = any(w in tokens for w in ("refund", "invoice", "payment", "bill", "subscription", "charge"))
-    has_account_core = any(w in tokens for w in ("login", "signin", "password", "2fa", "account", "mfa", "otp", "sms"))
+    has_billing_core = any(w in tokens for w in ("refund", "invoice", "payment", "bill", "subscription", "charge", "pricing", "card"))
+    has_account_core = any(w in tokens for w in ("login", "signin", "password", "2fa", "account", "mfa", "otp", "sms", "profile"))
     symptom_words = any(w in tokens for w in ("error", "failed", "bug", "issue", "problem", "broken"))
 
     if symptom_words:
         if has_billing_core and not any(w in tokens for w in ("server", "database", "api", "backend", "deploy")):
-            scores["billing"] += 1.5
-            scores["technical"] = max(0.0, scores["technical"] - 1.5)
+            scores["billing"] += 2.0
+            scores["technical"] = max(0.0, scores["technical"] - 2.0)
         elif has_account_core and not any(w in tokens for w in ("server", "database", "api", "backend", "deploy")):
-            scores["account"] += 1.5
-            scores["technical"] = max(0.0, scores["technical"] - 1.5)
+            scores["account"] += 2.0
+            scores["technical"] = max(0.0, scores["technical"] - 2.0)
 
     sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
     best_cat, best_score = sorted_scores[0]
@@ -186,16 +201,16 @@ def classify(text: str) -> dict:
         confidence = 0.60
     else:
         category = best_cat
-        base_confidence = 0.78
+        base_confidence = 0.80
         margin_boost = min(0.12, (best_score - second_score) * 0.04)
-        volume_boost = min(0.08, best_score * 0.015)
+        volume_boost = min(0.06, best_score * 0.015)
         confidence = round(min(0.98, base_confidence + margin_boost + volume_boost), 2)
 
     # Urgency determination
     urgency_score = 0.0
     for phrase in URGENCY_HIGH_PHRASES:
         if phrase in clean_text:
-            urgency_score += 2.5
+            urgency_score += 2.0
 
     for kw in URGENCY_HIGH_KEYWORDS:
         if kw in tokens:
@@ -207,7 +222,7 @@ def classify(text: str) -> dict:
 
     words = text.split()
     if len(words) >= 3 and sum(1 for w in words if w.isupper() and len(w) > 2) >= 2:
-        urgency_score += 1.0
+        urgency_score += 1.5
 
     urgency = "high" if urgency_score >= 1.5 else "low"
 
@@ -224,7 +239,7 @@ def classify(text: str) -> dict:
 class TriageHandler(BaseHTTPRequestHandler):
     """HTTP Request Handler implementing the Mycrobo Arena Triage API contract."""
 
-    server_version = "MycroboTriage/1.1"
+    server_version = "MycroboTriage/1.2"
 
     def setup(self):
         super().setup()
