@@ -202,6 +202,20 @@ class TestHttpServerIntegration(unittest.TestCase):
         self.assertEqual(headers.get("X-Content-Type-Options"), "nosniff")
         self.assertIn("X-RateLimit-Limit", headers)
 
+    def test_classify_flexible_input_variants(self):
+        # Supports 'message', 'content', and direct string
+        s1, _, b1 = self.request("/classify", method="POST", body={"message": "Please refund invoice #100"})
+        self.assertEqual(s1, 200)
+        self.assertEqual(b1["category"], "billing")
+
+        s2, _, b2 = self.request("/classify", method="POST", body={"content": "Server error 500"})
+        self.assertEqual(s2, 200)
+        self.assertEqual(b2["category"], "technical")
+
+        s3, _, b3 = self.request("/classify", method="POST", body="Forgot my password to sign in")
+        self.assertEqual(s3, 200)
+        self.assertEqual(b3["category"], "account")
+
     def test_classify_missing_text_field(self):
         status, _, body = self.request("/classify", method="POST", body={"other": 123})
         self.assertEqual(status, 400)

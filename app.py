@@ -468,11 +468,24 @@ class TriageHandler(BaseHTTPRequestHandler):
         except (ValueError, UnicodeDecodeError):
             return self.send_json(400, {"error": "invalid_json"}, extra_headers=rate_headers)
 
-        if not isinstance(body, dict):
+        # Flexible input extraction supporting standard triage payload variants
+        if isinstance(body, dict):
+            text_val = (
+                body.get("text")
+                or body.get("message")
+                or body.get("content")
+                or body.get("query")
+                or body.get("ticket")
+                or body.get("description")
+                or body.get("input")
+                or body.get("prompt")
+            )
+        elif isinstance(body, str):
+            text_val = body
+        else:
             return self.send_json(400, {"error": "invalid_json"}, extra_headers=rate_headers)
 
-        # Validate 'text' field
-        text_val = body.get("text")
+        # Validate extracted text content
         if not isinstance(text_val, str) or not text_val.strip():
             return self.send_json(400, {"error": "text_required"}, extra_headers=rate_headers)
 

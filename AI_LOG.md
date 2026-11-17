@@ -53,6 +53,11 @@ The project goal was to build a clean, resilient, and architecture-agnostic AI T
 - Refined classification engine with contextual disambiguation: core domain entities (e.g. invoice, refund, login, 2FA) take precedence over generic symptom keywords (e.g. error, failed) to avoid false technical misclassifications.
 - Expanded test suite to 32 tests, achieving 100% pass rate in 1.27s.
 
+### Phase 6: Final Submission Optimization (Iteration 3)
+- Implemented multi-format request body extraction: transparently accepts `text`, `message`, `content`, `query`, `ticket`, `description`, or direct string payloads to support diverse client caller patterns while maintaining strict 400 validation on empty or missing data.
+- Built and deployed live interactive test console on Vercel (`https://assignment-mycrobo.vercel.app`) with serverless path routing and HEAD request compliance.
+- Expanded automated test suite to 34 tests covering flexible input variants, rate limiting boundaries, and socket concurrency.
+
 ---
 
 ## 4. Verification Declaration
