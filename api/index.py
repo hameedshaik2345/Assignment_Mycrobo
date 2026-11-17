@@ -2,6 +2,7 @@
 
 import os
 import sys
+from urllib.parse import parse_qs, urlparse
 
 # Ensure project root is in sys.path for serverless execution
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,23 +16,18 @@ class handler(TriageHandler):
     """Vercel Python runtime handler with intelligent serverless path mapping."""
 
     def _normalize_path(self):
-        # Vercel serverless provides the original client path via headers or path
-        raw = (
-            self.headers.get("x-matched-path")
-            or self.headers.get("x-invoke-path")
-            or self.headers.get("x-forwarded-uri")
-            or self.path
-        )
-        clean = raw.split("?")[0].rstrip("/")
+        parsed = urlparse(self.path)
+        params = parse_qs(parsed.query)
+        custom_path = params.get("path", [""])[0].strip("/")
 
-        if clean.endswith("/health") or clean == "/health":
+        if custom_path == "health":
             self.path = "/health"
-        elif clean.endswith("/classify") or clean == "/classify":
+        elif custom_path == "classify":
             self.path = "/classify"
-        elif clean in ("", "/", "/api", "/api/index", "/api/index.py"):
+        elif custom_path == "":
             self.path = "/"
         else:
-            self.path = clean
+            self.path = f"/{custom_path}"
 
     def do_GET(self):
         self._normalize_path()
